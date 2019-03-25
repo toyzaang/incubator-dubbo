@@ -147,6 +147,27 @@ public abstract class AbstractConfig implements Serializable {
         appendParameters(parameters, config, null);
     }
 
+    /**
+     * 将配置对象的属性，添加到参数集合
+     * parameters ，参数集合。实际上，该集合会用于 URL.parameters 。
+     * config ，配置对象。
+     * prefix ，属性前缀。用于配置项添加到 parameters 中时的前缀。
+     * 第 5 行：获得所有方法的数组，为下面通过反射获得配置项的值做准备。
+     * 第 6 行：循环每个方法。
+     * 第 9 至 13 行：方法为获得基本类型 + public 的 getting 方法。
+     * 第 14 至 17 行：返回值类型为 Object 或排除( `@Parameter.exclue=true` )的配置项，跳过。
+     * 第 19 至 26 行：获得配置项名。
+     * 第 28 至 48 行：获得配置项值。中间有一些逻辑处理，胖友看下代码的注释。
+     * 第 49 行：添加配置项到 parameters 。
+     * 第 51 至 53 行：当 `@Parameter.required = true` 时，校验配置项非空。
+     * 第 54 至 57 行：当方法为 #getParameters() 时，例如 。
+     * 第 58 行：通过反射，获得 #getParameters() 的返回值为 map 。
+     * 第 59 至 64 行：将 map 添加到 parameters ，kv 格式为 prefix:entry.key entry.value 。
+     * 因此，通过 #getParameters() 对应的属性，动态设置配置项，拓展出非 Dubbo 内置好的逻辑。
+     * @param parameters
+     * @param config
+     * @param prefix
+     */
     @SuppressWarnings("unchecked")
     protected static void appendParameters(Map<String, String> parameters, Object config, String prefix) {
         if (config == null) {
@@ -156,6 +177,7 @@ public abstract class AbstractConfig implements Serializable {
         for (Method method : methods) {
             try {
                 String name = method.getName();
+                // 方法为获取基本类型，public 的 getting 方法
                 if (ClassHelper.isGetter(method)) {
                     Parameter parameter = method.getAnnotation(Parameter.class);
                     if (method.getReturnType() == Object.class || parameter != null && parameter.excluded()) {
@@ -165,19 +187,25 @@ public abstract class AbstractConfig implements Serializable {
                     if (parameter != null && parameter.key().length() > 0) {
                         key = parameter.key();
                     } else {
+                        // 获得属性名
                         key = calculatePropertyFromGetter(name);
                     }
+                    // 获得属性值
                     Object value = method.invoke(config);
                     String str = String.valueOf(value).trim();
                     if (value != null && str.length() > 0) {
+                        // 转义
                         if (parameter != null && parameter.escaped()) {
                             str = URL.encode(str);
                         }
+                        // 拼接
                         if (parameter != null && parameter.append()) {
+                            // default. 里获取，适用于 ServiceConfig =》ProviderConfig 、ReferenceConfig =》ConsumerConfig 。
                             String pre = parameters.get(Constants.DEFAULT_KEY + "." + key);
                             if (pre != null && pre.length() > 0) {
                                 str = pre + "," + str;
                             }
+                            // 通过 `parameters` 属性配置，例如 `AbstractMethodConfig.parameters`
                             pre = parameters.get(key);
                             if (pre != null && pre.length() > 0) {
                                 str = pre + "," + str;
@@ -193,7 +221,7 @@ public abstract class AbstractConfig implements Serializable {
                 } else if ("getParameters".equals(name)
                         && Modifier.isPublic(method.getModifiers())
                         && method.getParameterTypes().length == 0
-                        && method.getReturnType() == Map.class) {
+                        && method.getReturnType() == Map.class) {// `#getParameters()` 方法
                     Map<String, String> map = (Map<String, String>) method.invoke(config, new Object[0]);
                     if (map != null && map.size() > 0) {
                         String pre = (prefix != null && prefix.length() > 0 ? prefix + "." : "");
@@ -212,6 +240,17 @@ public abstract class AbstractConfig implements Serializable {
         appendAttributes(parameters, config, null);
     }
 
+    /**
+     * @Parameter(attribute = true) 配置对象的属性，添加到参数集合
+     * 第 9 至 13 行：方法为获得基本类型 + public 的 getting 方法。
+     * 第 14 至 16 行：需要( `@Parameter.exclue=true` )的配置项。
+     * 第 17 至 24 行：获得配置项名。
+     * 第 26 至 30 行：获得配置项值。
+     * 第 31 行：添加配置项到 parameters 。
+     * @param parameters
+     * @param config
+     * @param prefix
+     */
     protected static void appendAttributes(Map<String, Object> parameters, Object config, String prefix) {
         if (config == null) {
             return;
@@ -220,6 +259,7 @@ public abstract class AbstractConfig implements Serializable {
         for (Method method : methods) {
             try {
                 Parameter parameter = method.getAnnotation(Parameter.class);
+                // 排除@Parameter(attribute = true) 配置对象的属性
                 if (parameter == null || !parameter.attribute()) {
                     continue;
                 }
@@ -232,6 +272,7 @@ public abstract class AbstractConfig implements Serializable {
                         key = calculateAttributeFromGetter(name);
                     }
                     Object value = method.invoke(config);
+                    // 获得属性值，存在则添加到 `parameters` 集合
                     if (value != null) {
                         if (prefix != null && prefix.length() > 0) {
                             key = prefix + "." + key;

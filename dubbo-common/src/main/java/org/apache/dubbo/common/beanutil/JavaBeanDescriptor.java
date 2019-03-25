@@ -43,7 +43,7 @@ public final class JavaBeanDescriptor implements Serializable, Iterable<Map.Entr
 
     /**
      * Used to define a type is valid.
-     *
+     * 校验type的类型应该在1-7之间
      * @see #isValidType(int)
      */
     private static final int TYPE_MAX = TYPE_BEAN;
